@@ -3,10 +3,9 @@ import { z } from "zod";
 import { ArrowUpRight } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "@/hooks/use-toast";
+import { sendForm } from "@/lib/send-form";
 
 export const PROJECT_TYPES = ["Independent home", "Villa / Farmhouse", "Apartment development", "Commercial building", "Interiors only", "Renovation", "Other"];
-
-const WHATSAPP_NUMBER = "919148837834";
 
 const inquirySchema = z.object({
   name: z.string().trim().min(2, "Name is too short").max(80),
@@ -20,20 +19,9 @@ const inquirySchema = z.object({
 
 type Lead = z.infer<typeof inquirySchema>;
 
-// Opens WhatsApp with the enquiry pre-filled so it reaches the Aasta team.
-export const sendLeadToWhatsApp = (lead: Partial<Lead>, projectName?: string) => {
-  const lines = [
-    projectName ? `Enquiry about ${projectName}` : "New project enquiry",
-    `Name: ${lead.name}`,
-    `Phone: ${lead.phone}`,
-    lead.email && `Email: ${lead.email}`,
-    lead.projectType && `Project type: ${lead.projectType}`,
-    lead.location && `Location: ${lead.location}`,
-    lead.plotSize && `Plot / built-up size: ${lead.plotSize}`,
-    lead.message && `Message: ${lead.message}`,
-  ].filter(Boolean);
-  window.open(`https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(lines.join("\n"))}`, "_blank", "noopener,noreferrer");
-};
+// Emails the enquiry to the Aasta team via Resend (see api/send-email.ts).
+export const sendLead = (lead: Partial<Lead>, options: { projectName?: string; source?: string } = {}) =>
+  sendForm({ form: "inquiry", ...lead, ...options });
 
 type Props = { open: boolean; onOpenChange: (open: boolean) => void; projectName?: string; title?: string };
 
@@ -42,13 +30,14 @@ const emptyLead = (projectName?: string): Lead => ({ name: "", phone: "", email:
 export const InquiryDialog = ({ open, onOpenChange, projectName, title }: Props) => {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [lead, setLead] = useState<Lead>(emptyLead(projectName));
+  const [sending, setSending] = useState(false);
 
   const reset = () => {
     setErrors({});
     setLead(emptyLead(projectName));
   };
 
-  const onSubmit = (event: React.FormEvent) => {
+  const onSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     const result = inquirySchema.safeParse(lead);
     if (!result.success) {
@@ -57,10 +46,18 @@ export const InquiryDialog = ({ open, onOpenChange, projectName, title }: Props)
       setErrors(nextErrors);
       return;
     }
-    sendLeadToWhatsApp(result.data, projectName);
-    toast({ title: "Thank you", description: "Your enquiry is ready to send on WhatsApp. Our team will get back to you shortly." });
-    reset();
-    onOpenChange(false);
+    setErrors({});
+    setSending(true);
+    try {
+      await sendLead(result.data, { projectName, source: title ?? "Enquiry form" });
+      toast({ title: "Thank you", description: "Your enquiry has been sent. Our team will get back to you shortly." });
+      reset();
+      onOpenChange(false);
+    } catch (error) {
+      toast({ variant: "destructive", title: "Message not sent", description: (error as Error).message });
+    } finally {
+      setSending(false);
+    }
   };
 
   const inputClass = "mt-1.5 w-full bg-transparent border-b border-ink/20 py-2.5 text-ink focus:border-copper focus:outline-none transition-colors";
@@ -99,7 +96,7 @@ export const InquiryDialog = ({ open, onOpenChange, projectName, title }: Props)
               <label className="text-[10px] tracking-label uppercase text-ink-soft">Message</label>
               <textarea value={lead.message} onChange={(event) => setLead({ ...lead, message: event.target.value })} rows={3} className={`${inputClass} resize-none`} />
             </div>
-            <button type="submit" className="group sm:col-span-2 mt-2 inline-flex w-fit items-center gap-3 bg-ink text-ivory px-7 py-3.5 text-[10px] tracking-label uppercase transition-all hover:bg-copper">Send enquiry <ArrowUpRight size={14} className="transition-transform group-hover:translate-x-1 group-hover:-translate-y-1" /></button>
+            <button type="submit" disabled={sending} className="group sm:col-span-2 mt-2 inline-flex w-fit items-center gap-3 bg-ink text-ivory px-7 py-3.5 text-[10px] tracking-label uppercase transition-all hover:bg-copper disabled:pointer-events-none disabled:opacity-60">{sending ? "Sending…" : "Send enquiry"} <ArrowUpRight size={14} className="transition-transform group-hover:translate-x-1 group-hover:-translate-y-1" /></button>
           </form>
         </div>
       </DialogContent>

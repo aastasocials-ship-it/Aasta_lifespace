@@ -4,6 +4,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { ArrowUpRight, Check } from "lucide-react";
 import { formatCrLakh, formatINR } from "@/lib/format-inr";
 import { toast } from "@/hooks/use-toast";
+import { sendForm } from "@/lib/send-form";
 
 export interface FloorEntry {
   label: string;
@@ -31,6 +32,7 @@ export const EstimateDialog = ({ open, onOpenChange, planName, rate, floors, tot
   const [step, setStep] = useState<"form" | "summary">("form");
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [lead, setLead] = useState({ name: "", email: "", phone: "", city: "" });
+  const [sending, setSending] = useState(false);
 
   const reset = () => {
     setStep("form");
@@ -43,7 +45,7 @@ export const EstimateDialog = ({ open, onOpenChange, planName, rate, floors, tot
     onOpenChange(v);
   };
 
-  const onSubmit = (e: React.FormEvent) => {
+  const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const result = leadSchema.safeParse(lead);
     if (!result.success) {
@@ -53,8 +55,16 @@ export const EstimateDialog = ({ open, onOpenChange, planName, rate, floors, tot
       return;
     }
     setErrors({});
-    setStep("summary");
-    toast({ title: "Estimate ready", description: "Our team will reach out shortly." });
+    setSending(true);
+    try {
+      await sendForm({ form: "estimate", ...result.data, planName, rate, floors, totalArea, totalCost });
+      setStep("summary");
+      toast({ title: "Estimate ready", description: "Our team will reach out shortly." });
+    } catch (error) {
+      toast({ variant: "destructive", title: "Details not sent", description: (error as Error).message });
+    } finally {
+      setSending(false);
+    }
   };
 
   return (
@@ -89,9 +99,10 @@ export const EstimateDialog = ({ open, onOpenChange, planName, rate, floors, tot
               ))}
               <button
                 type="submit"
-                className="group mt-4 inline-flex items-center gap-3 bg-ink text-ivory px-7 py-3.5 text-[10px] tracking-label uppercase transition-all hover:bg-copper"
+                disabled={sending}
+                className="group mt-4 inline-flex items-center gap-3 bg-ink text-ivory px-7 py-3.5 text-[10px] tracking-label uppercase transition-all hover:bg-copper disabled:pointer-events-none disabled:opacity-60"
               >
-                Reveal estimate <ArrowUpRight size={14} className="transition-transform group-hover:translate-x-1 group-hover:-translate-y-1" />
+                {sending ? "Sending…" : "Reveal estimate"} <ArrowUpRight size={14} className="transition-transform group-hover:translate-x-1 group-hover:-translate-y-1" />
               </button>
             </form>
           </div>

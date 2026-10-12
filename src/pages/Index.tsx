@@ -37,7 +37,8 @@ import prestigeInt03 from "@/assets/prestige-int-03.jpg";
 import kalyan14 from "@/assets/kalyan-14.jpg";
 import { Link } from "react-router-dom";
 import { StartProjectBand } from "@/components/StartProjectBand";
-import { PROJECT_TYPES, sendLeadToWhatsApp } from "@/components/InquiryDialog";
+import { PROJECT_TYPES, sendLead } from "@/components/InquiryDialog";
+import { fileToBase64, sendForm } from "@/lib/send-form";
 
 const SectionLabel = ({
   index,
@@ -1085,15 +1086,37 @@ const FAQs = () => (
   </section>
 );
 
+const MAX_RESUME_BYTES = 3 * 1024 * 1024;
+
 const Careers = () => {
-  const onSubmit = (e: React.FormEvent) => {
+  const [sending, setSending] = useState(false);
+  const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    toast({
-      title: "Application received",
-      description:
-        "Thank you for your interest. Our team will review and reach out.",
-    });
-    (e.target as HTMLFormElement).reset();
+    const form = e.target as HTMLFormElement;
+    const { resume, ...fields } = Object.fromEntries(new FormData(form));
+    const file = resume instanceof File && resume.size > 0 ? resume : null;
+    if (file && file.size > MAX_RESUME_BYTES) {
+      toast({ variant: "destructive", title: "Resume too large", description: "Please upload a file under 3 MB." });
+      return;
+    }
+    setSending(true);
+    try {
+      await sendForm({
+        form: "careers",
+        ...(fields as Record<string, string>),
+        resume: file ? { filename: file.name, content: await fileToBase64(file) } : undefined,
+      });
+      toast({
+        title: "Application received",
+        description:
+          "Thank you for your interest. Our team will review and reach out.",
+      });
+      form.reset();
+    } catch (error) {
+      toast({ variant: "destructive", title: "Application not sent", description: (error as Error).message });
+    } finally {
+      setSending(false);
+    }
   };
   return (
     <section id="careers" className="relative px-6 py-32 lg:px-20 lg:py-44">
@@ -1203,9 +1226,10 @@ const Careers = () => {
             <div className="sm:col-span-2">
               <button
                 type="submit"
-                className="group inline-flex items-center gap-3 bg-ink text-ivory px-8 py-4 text-[10px] tracking-label uppercase transition-all hover:bg-copper"
+                disabled={sending}
+                className="group inline-flex items-center gap-3 bg-ink text-ivory px-8 py-4 text-[10px] tracking-label uppercase transition-all hover:bg-copper disabled:pointer-events-none disabled:opacity-60"
               >
-                Submit application
+                {sending ? "Sending…" : "Submit application"}
                 <ArrowUpRight
                   size={14}
                   className="transition-transform group-hover:translate-x-1 group-hover:-translate-y-1"
@@ -1235,16 +1259,24 @@ const WhatsAppFloat = () => (
 );
 
 const Contact = () => {
-  const onSubmit = (e: React.FormEvent) => {
+  const [sending, setSending] = useState(false);
+  const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const form = e.target as HTMLFormElement;
     const data = Object.fromEntries(new FormData(form)) as Record<string, string>;
-    sendLeadToWhatsApp(data);
-    toast({
-      title: "Thank you",
-      description: "Your enquiry is ready to send on WhatsApp. We'll be in touch shortly.",
-    });
-    form.reset();
+    setSending(true);
+    try {
+      await sendLead(data, { source: "Contact section" });
+      toast({
+        title: "Thank you",
+        description: "Your enquiry has been sent. We'll be in touch shortly.",
+      });
+      form.reset();
+    } catch (error) {
+      toast({ variant: "destructive", title: "Message not sent", description: (error as Error).message });
+    } finally {
+      setSending(false);
+    }
   };
 
   return (
@@ -1399,9 +1431,10 @@ const Contact = () => {
             </div>
             <button
               type="submit"
-              className="group inline-flex items-center gap-3 border border-ivory/30 px-8 py-4 text-[10px] tracking-label uppercase transition-all hover:bg-copper hover:border-copper hover:text-ivory"
+              disabled={sending}
+              className="group inline-flex items-center gap-3 border border-ivory/30 px-8 py-4 text-[10px] tracking-label uppercase transition-all hover:bg-copper hover:border-copper hover:text-ivory disabled:pointer-events-none disabled:opacity-60"
             >
-              Start Your Project Today
+              {sending ? "Sending…" : "Start Your Project Today"}
               <ArrowUpRight
                 size={14}
                 className="transition-transform group-hover:translate-x-1 group-hover:-translate-y-1"
