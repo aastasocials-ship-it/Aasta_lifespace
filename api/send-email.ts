@@ -119,7 +119,7 @@ const json = (status: number, body: Record<string, unknown>) =>
   new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
 
 export async function POST(request: Request) {
-  const apiKey = process.env.RESEND_API_KEY;
+  const apiKey = process.env.RESEND_API_KEY?.trim();
   if (!apiKey) return json(500, { error: "Email service is not configured." });
 
   let parsed;
@@ -143,7 +143,8 @@ export async function POST(request: Request) {
     headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
     body: JSON.stringify({
       from: process.env.RESEND_FROM_EMAIL || "Aasta Lifespace Website <onboarding@resend.dev>",
-      to: (process.env.CONTACT_TO_EMAIL || "studio@aastalifespace.com,aastasocials@gmail.com").split(",").map((s) => s.trim()),
+      // Add studio@aastalifespace.com once the domain is verified in Resend; until then Resend rejects it.
+      to: (process.env.CONTACT_TO_EMAIL || "aastasocials@gmail.com").split(",").map((s) => s.trim()).filter(Boolean),
       reply_to: replyTo,
       subject,
       html,
@@ -153,8 +154,16 @@ export async function POST(request: Request) {
   });
 
   if (!response.ok) {
-    console.error("Resend error", response.status, await response.text());
-    return json(502, { error: "Could not send your message. Please try again or call us." });
+    const detail = await response.text();
+    console.error("Resend error", response.status, detail);
+    const reason = (() => {
+      try {
+        return String(JSON.parse(detail).message ?? "");
+      } catch {
+        return "";
+      }
+    })();
+    return json(502, { error: "Could not send your message. Please try again or call us.", reason });
   }
   return json(200, { ok: true });
 }
